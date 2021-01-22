@@ -16,7 +16,7 @@ interface Pather_parameters {
 }
 
 export class Pather extends Pathing_Object {
-  sprite_url = "./sprites/Player.png";
+  sprite_url = "./sprites/player.png";
   tags: Array<string> = ["pather"];
   height = 100;
   width = 100

@@ -1,6 +1,6 @@
 import { obj } from "./object";
 import { obj_state, Vector, dimensions} from "./state";
-import {getRandInt} from "./math";
+import {getRandInt,Vec} from "./math";
 import {particle_entry} from "./room";
 
 export interface sprite{
@@ -28,26 +28,24 @@ export class Particle extends obj{
   max_lifetime:number;
   state:Particle_i;
   selected_sprite:sprite;
-  constructor(part:particle_entry,state:obj_state,lifetime:number,random_range:number){
+  constructor(part:particle_entry,state:obj_state,lifetime:number){
     super(state);
+    this.state.position = Vec.create(this.state.position.x,this.state.position.y);
     this.state.lifetime = 0;
     this.sprite_url = part.sprite;
     this.height = part.height;
     this.width = part.width;
     this.max_lifetime = lifetime;
-    this.random_range = random_range;
-    this.state.position.x += getRandInt(-random_range/2,random_range/2);
-    this.state.position.y += getRandInt(-random_range/2,random_range/2);
-  }
-  delete(){
-    let room = this.game.getRoom();
-    room.deleteItem(this.id,room.particles_arr);
   }
   statef(time:number){
     this.state.lifetime += time;
     if(this.state.lifetime > this.max_lifetime){
       this.delete();
     }
+  }
+  delete(){
+    let room = this.game.getRoom();
+    room.deleteItem(this.id,room.particles_arr);
   }
   renderf(time:number):positioned_sprite{
     if(!this.selected_sprite){

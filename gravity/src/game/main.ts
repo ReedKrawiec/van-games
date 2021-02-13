@@ -1,7 +1,8 @@
-import {Vector,obj_state,room_state} from "../lib/state";
-import {game,GetViewportDimensions,viewport} from "../van";
+import {Vector,obj_state,room_state} from "lib/state";
+import {game,GetViewportDimensions,viewport,setPaused,PAUSED} from "../van";
 import { gravity_mass } from "./objects/abstract/gravity_mass";
 import { simulation } from "./rooms/simulation";
+import {sun} from "./objects/sun";
 
 let canvas_element:HTMLCanvasElement = document.getElementById("target") as HTMLCanvasElement;
 
@@ -29,10 +30,21 @@ window.functions = {
       o.state.tick_timer = 0;
     }
     room.state.trail_interval = n;
+  },
+  togglePause(){
+    setPaused(!PAUSED);
   }
 }
 
 export let g = new game<globals>(canvas_element.getContext("2d"),{});
+main();
 
-g.loadRoomString("simulation");
+async function main(){
+  await g.loadRoomString("simulation");
+  let room = g.getRoom() as simulation;
+  let s = room.getObjByTag("sun")[0] as sun;
+  room.state.bound_mass = s;
+}
+
+
 

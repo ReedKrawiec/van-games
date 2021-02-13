@@ -8,9 +8,9 @@ import { Gun } from "./Gun";
 export class Player extends composite_obj{
   enemy = true;
   constructor(state:obj_state, parameters: Player_Params) {
-    super(state);
-    this.objects.push(new ControlledPlayer(state, parameters));
-    this.objects.push(new Gun({
+    super(state,parameters);
+    this.addItem(new ControlledPlayer(state, parameters));
+    this.addItem(new Gun({
       position:{x: state.position.x, y: state.position.y + 100},
       velocity:{x:0,y:0},
       rotation:0,

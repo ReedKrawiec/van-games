@@ -11,5 +11,6 @@ export class box extends platformer_obj{
   gravity = false;
   enemy = false;
   tags = ["static"];
+  static = true;
   scale_type = scale_type.repeat
 }

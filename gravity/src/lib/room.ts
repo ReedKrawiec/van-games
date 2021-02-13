@@ -1,14 +1,15 @@
-import { gravity_obj,obj } from "./object";
+import { bounding_box, gravity_obj,obj } from "./object";
 import { Particle, sprite } from "./sprite";
 import { dimensions, obj_state, Vector } from "./state";
 import { velocityCollisionCheck,check_collisions,collision_box,check_all_collisions,check_all_objects} from "./collision";
-import {render_collision_box,DEBUG} from "../van";
+import {render_collision_box,DEBUG, PAUSED} from "../van";
 import {Bind,control_func, exec_type} from "./controls";
 import {HUD,Text, Text_Node} from "./hud";
 import {audio} from "./audio"
 import {game} from "../van";
 import {debug_update_obj_list,root_path,path} from "../lib/debug";
 import {prefabs} from "../game/objects/prefabs";
+import {Vec,getRandInt} from "lib/math";
 
 interface position{
   x:number,
@@ -47,6 +48,105 @@ export interface state_config{
   objects:object_state_config[]
 }
 
+interface internal_map{
+  [index:number]:{
+    [index:number]:Map<string,obj>
+  }
+}
+
+export class map_matrix{
+  length:number;
+  square_length:number;
+  internal_map:internal_map = {};
+  constructor(full_length:number,square_length:number){
+    this.length = full_length;
+    this.square_length = square_length;
+  }
+  private ensure(a:Vector){
+    if(!this.internal_map[a.y]){
+      this.internal_map[a.y] = {}
+    }
+    if(!this.internal_map[a.y][a.x]){
+      this.internal_map[a.y][a.x] = new Map<string,obj>();
+    }
+    return this.internal_map[a.y][a.x];
+  }
+  get(a:Vector){
+    return this.ensure(a);
+  }
+  add(a:Vector,o:obj){
+    let entry = this.ensure(a);
+    entry.set(o.id,o);
+    o.proximity_boxes.add(a);
+  }
+  exists(a:Vector){
+    if(!this.internal_map[a.y] || !this.internal_map[a.y][a.x])
+      return false;
+    return true;
+  }
+  remove(a:Vector,o:obj){
+    let entry = this.internal_map[a.y][a.x];
+    entry.delete(o.id);
+    o.proximity_boxes.delete(a);
+  }
+  getObjectsFromBox(a:collision_box):obj[]{
+    return this.getObjectsFromCords(this.getCordsFromBox(a));
+  }
+  getObjectsFromCords(a:Vector[]):obj[]{
+    let o = new Set<obj>();
+    for(let v of a){
+      if(this.exists(v)){
+        let keys = this.internal_map[v.y][v.x].keys();
+        for(let k of keys){
+          let j = this.internal_map[v.y][v.x].get(k);
+          o.add(j);
+        }
+      }
+    }
+    return Array.from(o);
+  }
+  getCordsFromBox(a:collision_box){
+    let bottom_left = Vec.create(a.x - a.width/2,a.y - a.height/2);
+    let top_right = Vec.create(a.x + a.width/2,a.y + a.height/2);
+    return this.getCordsFromBoundingBox({bottom_left,top_right})
+  }
+  getCordsFromBoundingBox(a:bounding_box){
+    let box = a;
+    let bot_left = Vec.scalar_divide(Vec.scalar_add(box.bottom_left,this.length/2),this.square_length);
+    let top_right = Vec.scalar_divide(Vec.scalar_add(box.top_right,this.length/2),this.square_length);
+    bot_left = Vec.func(bot_left,(a)=>Math.max(0,a));
+    top_right = Vec.func(top_right,(a)=>Math.min(this.length/this.square_length,a));
+    let min = Vec.func(bot_left,(a)=>Math.floor(a));
+    let max = Vec.func(top_right,(a)=>Math.ceil(a));
+    let totals = Vec.sub(max,min);
+    
+    let all_boxes = [];
+    let cord = Vec.func(
+      Vec.scalar_divide(
+        Vec.scalar_add(
+          Vec.func(box.bottom_left,(a)=>Math.max(a,-this.length/2)),
+          this.length/2),
+        this.square_length),
+      (a)=>Math.floor(a)
+    );
+    for(let a = 0;a<totals.y;a++){
+      for(let b = 0;b<totals.x;b++){
+        let new_vec = Vec.add(Vec.create(b,a),cord);
+        new_vec = Vec.func(new_vec,(a)=>Math.floor(a));
+        all_boxes.push(new_vec);
+      }
+    }
+    return all_boxes;
+  }
+  
+  getBoxLocations(o:obj){
+    let box = o.getBoundingBox();
+    let cords = this.getCordsFromBoundingBox(box);
+    return cords;
+  }
+
+}
+
 export class room<T>{
   //Url to an image to be used for the room background
   background_url: string;
@@ -66,12 +166,14 @@ export class room<T>{
   //on the hud layer.
   render:boolean = true;
   text_nodes:Text[] = [];
+  proximity_map:map_matrix = new map_matrix(10000,1000);
   constructor(game:game<unknown>,config:state_config){
     this.game = game;
     for(let c of config.objects){
       //This handles loading objects from the saved json file associated with each room.
       this.addItemStateConfig(c)
     }
+   
   }
   exportStateConfig(){
     let config:state_config = {objects:[]};
@@ -134,6 +236,14 @@ export class room<T>{
       ob.game = this.game;
     }
     await Promise.all(o.map((a)=>a.load()));
+    if(list == this.objects){
+      for(let ob of o){
+        let cords = this.proximity_map.getBoxLocations(ob);
+        for(let cord of cords){
+          this.proximity_map.add(cord,ob);
+        }
+      }
+    }
     list.push(...o);
     if(DEBUG && list === this.objects){
       debug_update_obj_list();
@@ -147,6 +257,7 @@ export class room<T>{
         a--;
       }
     }
+    
     if(DEBUG && list === this.objects){
       debug_update_obj_list();
     }
@@ -181,6 +292,9 @@ export class room<T>{
     if(DEBUG){
       render_collision_box(box);
     }
+    if(list == this.objects){
+      list = this.proximity_map.getObjectsFromBox(box);
+    }
     return list.filter(obj=>obj.collision && obj.collidesWithBox(box) && tags.every((val)=>obj.tags.includes(val)));
     
   }
@@ -189,22 +303,31 @@ export class room<T>{
     if(DEBUG){
       render_collision_box(box);
     }
+    if(list == this.objects){
+      list = this.proximity_map.getObjectsFromBox(box);
+    }
     return list.filter((obj)=>obj.collidesWithBox(box) && tags.every((val)=>obj.tags.includes(val)));
     
   }
   //checks for objects with collision in the box that do not contain the tags in the second argument
-  checkCollisions(box:collision_box,exempt?:string[],list=this.objects):obj[]{
+  checkCollisions(box:collision_box,exempt:string[] = [],list=this.objects):obj[]{
     if(DEBUG){
       render_collision_box(box);
     }
-    return check_all_collisions(box,list,exempt);
+    if(list == this.objects){
+      list = this.proximity_map.getObjectsFromBox(box);
+    }
+    return list.filter(obj=>obj.collision && obj.collidesWithBox(box) && exempt.every((val)=>!obj.tags.includes(val)));
   }
   //checks for  any objects in the box that do not contain the tags in the second argument
-  checkObjects(box:collision_box,exempt?:string[],list=this.objects):obj[]{
+  checkObjects(box:collision_box,exempt:string[] = [],list=this.objects):obj[]{
     if(DEBUG){
       render_collision_box(box);
     }
-    return check_all_objects(box,list,exempt);
+    if(list == this.objects){
+      list = this.proximity_map.getObjectsFromBox(box);
+    }
+    return list.filter(obj=>obj.collidesWithBox(box) && exempt.every((val)=>!obj.tags.includes(val)));
   }
   //This method should be used to call bindControl and create any needed keyBindings
   registerControls(){
@@ -238,12 +361,12 @@ export class room<T>{
   }
   emitParticle(name:string,pos:position,lifetime:number,pos_range:number){
     let state = {
-      position:pos,
+      position:Vec.func(pos,(a) => a + getRandInt(-pos_range,pos_range)),
       velocity:{x:0,y:0},
       rotation:0,
       scaling:{width:1,height:1}
     }
-    this.addItem(new Particle(this.particles[name],state,lifetime,pos_range), this.particles_arr);
+    this.addItem(new Particle(this.particles[name],state,lifetime),this.particles_arr);
   }
   getObj(id:string){
     for(let a = 0; a < this.objects.length; a++){

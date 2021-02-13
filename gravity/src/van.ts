@@ -3,11 +3,14 @@ export let PAUSED = process.env.NODE_ENV === 'dev';
 import { obj} from "./lib/object";
 import { room } from "./lib/room";
 import { collision_box } from "./lib/collision";
-import { sprite_renderer, rect_renderer, stroked_rect_renderer, hud_text_renderer, Camera, text_renderer ,scale_type} from "./lib/render";
+import { sprite_renderer, rect_renderer, stroked_rect_renderer, hud_text_renderer, Camera, text_renderer ,scale_type, line, line_renderer, canvas_renderer} from "./lib/render";
 import { ExecuteRepeatBinds, Unbind } from "./lib/controls";
 import { init_click_handler } from "./lib/controls";
 import { debug_state, debug_update_room_list, debug_update_obj_list,debug_update_prefabs, debug_statef, debug_setup } from "./lib/debug";
+import {positioned_sprite} from "lib/sprite";
 import { rooms as room_list } from "./game/rooms/rooms";
+import { Vec } from "lib/math";
+
 
 
 let canvas_element: HTMLCanvasElement = document.getElementById("target") as HTMLCanvasElement;
@@ -67,6 +70,12 @@ export const render_collision_box = (a: collision_box) => {
   boxes.push(a);
 }
 
+let lines:line[] = [];
+
+export const render_line = (a:line) => {
+  lines.push(a);
+}
+
 let boxes: Array<collision_box> = [];
 
 export let deep = (a: any) => {
@@ -94,6 +103,8 @@ export class game<T>{
   //onscreen canvas, in the proper position in the viewport
   offscreen_canvas: HTMLCanvasElement;
   offscreen_context: CanvasRenderingContext2D;
+  static_canvas:HTMLCanvasElement;
+  static_context:CanvasRenderingContext2D;
   prototypes: Array<obj> = [];
   rooms: Array<any> = [];
   isRendering = false;
@@ -109,6 +120,8 @@ export class game<T>{
     }
     this.offscreen_canvas = document.createElement("canvas");
     this.offscreen_context = this.offscreen_canvas.getContext("2d");
+    this.static_canvas = document.createElement("canvas");
+    this.static_context = this.static_canvas.getContext("2d");
     //DEBUG determines whether the game is running within the editor
     if (DEBUG) {
       //Sets up some global debug state and the editor keybindings
@@ -167,11 +180,13 @@ export class game<T>{
         width: camera.state.dimensions.width * (1 / camera.state.scaling),
         height: camera.state.dimensions.height * (1 / camera.state.scaling)
       };
+      let room = this.state.current_room;
       //List of all particles within the camera's fov
+      let cords = room.proximity_map.getCordsFromBox(camera_box);
+      let to_check = room.proximity_map.getObjectsFromCords(cords);
       let particle_collides = this.state.current_room.checkObjects(camera_box, [], this.state.current_room.particles_arr);
       //List of all objects within the camera's fov
-      let camera_colliders = [...this.state.current_room.checkObjects(camera_box), ...particle_collides];
-
+      let camera_colliders = [...this.state.current_room.checkObjects(camera_box,[],to_check), ...particle_collides];
       let render_args = {
         context: this.offscreen_context,
         camera: camera,
@@ -190,9 +205,17 @@ export class game<T>{
           scale_type:scale_type.grow
         });
       }
+      canvas_renderer(render_args,{
+        canvas:this.static_canvas,
+        width:this.state.current_room.proximity_map.length,
+        height:this.state.current_room.proximity_map.length,
+        x:0,
+        y:0,
+        scale:{width:1,height:1}
+      })
       //Array of hitboxes for each item in the room
       let hitboxes: collision_box[] = [];
-      for (let a of camera_colliders.filter((b) => b.render).sort((a, b) => (a.layer - b.layer))) {
+      for (let a of camera_colliders.filter((b) => b.render && !b.static).sort((a, b) => (a.layer - b.layer))) {
         let rendered = a.renderTrack(t);
 
         //Objects can return either a sprite, or an array of sprites to simplify the API
@@ -257,7 +280,12 @@ export class game<T>{
       //  hitboxes, and potentially update the editor
       if (camera.state.debug) {
         let box: collision_box;
-        let boxes_copy = [...boxes]
+        let boxes_copy = [...boxes];
+        let lines_copy = [...lines];
+        while(lines_copy.length > 0){
+          let line = lines_copy.pop();
+          line_renderer(this.offscreen_context,line,"orange",10,camera);
+        }
         while (boxes_copy.length > 0) {
           let box = boxes_copy.pop();
           let rect = {
@@ -278,9 +306,10 @@ export class game<T>{
         //inside the editor UI
         if (DEBUG && debug_state.selected_properties_element) {
           let coll = debug_state.selected_properties_element.getFullCollisionBox();
-          rect_renderer(this.offscreen_context, { width: 25, height: 25 }, coll.x, coll.y, "skyblue", 10, camera);
+          rect_renderer(this.offscreen_context, { width: 5, height: 5 }, coll.x, coll.y, "skyblue", 10, camera);
           stroked_rect_renderer(this.offscreen_context, coll, coll.x, coll.y, "blue", 1, camera);
         }
+        stroked_rect_renderer(this.offscreen_context,{width:this.state.current_room.proximity_map.length,height:this.state.current_room.proximity_map.length},0,0,"purple",10,camera);
       }
       //Separate canvas for the editor camera
       if (a !== editor_camera_index) {
@@ -290,8 +319,10 @@ export class game<T>{
         debug_state.target.getContext("2d").drawImage(this.offscreen_canvas, camera.state.viewport.x, camera.state.viewport.y);
       }
     }
-    if (DEBUG)
+    if (DEBUG){
       boxes = [];
+      lines = [];
+    }
     requestAnimationFrame((a) => { this.render(a) });
   }
   start_logic(a: number) {
@@ -338,6 +369,7 @@ export class game<T>{
     }
     //This reference is used during initialization
     x.game = this;
+    
     //Deletes each object in the room (which also unbinds their binds),
     //and unbinds the room's bindings.
     if (this.state.current_room !== undefined) {
@@ -360,7 +392,36 @@ export class game<T>{
       debug_update_obj_list();
     }
 
-
+    let room_length = x.proximity_map.length;
+    let statics = x.objects.filter(u => u.static);
+    this.static_canvas.width = room_length;
+    this.static_canvas.height = room_length;
+    let static_cam = new Camera({
+      x:0,
+      y:0,
+      dimensions:{height:room_length,width:room_length},
+      scaling:1,
+      debug:false
+    },{
+      x:0,
+      y:0,
+      width:1,
+      height:1
+    })
+    statics.forEach((u)=>{
+      let rendered = u.renderf(0) as positioned_sprite;
+      sprite_renderer({
+        context:this.static_context,
+        camera:static_cam
+      },{
+        sprite:rendered.sprite,
+        x:rendered.x,
+        y:rendered.y,
+        rotation:u.state.rotation,
+        scale:u.state.scaling,
+        scale_type:u.scale_type
+      });
+    })
     if (!this.isRendering) {
       //This starts the render loop for the room
       this.render(0);

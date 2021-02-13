@@ -364,17 +364,12 @@ export async function debug_update_prefabs() {
     for (let obj of objs) {
       obj.UnbindAll();
     }
-
-    let filtered = objs.filter((a) => a.render);
+    let r = a.renderf(0);
+    
     return {
       prefab: prefabs[o],
       name: a.constructor.name,
-      rendered: filtered.map((o) => {
-        return {
-          name: o.constructor.name,
-          render: o.renderf(0)
-        }
-      })
+      rendered:r 
     };
 
   })
@@ -388,10 +383,10 @@ export async function debug_update_prefabs() {
     let para = document.createElement("p");
     para.appendChild(document.createTextNode(prefab.name));
     div.appendChild(para);
-    if (Array.isArray(prefab.rendered[0].render)) {
+    if (Array.isArray(prefab.rendered)) {
     }
     else {
-      div.append(prefab.rendered[0].render.sprite.sprite_sheet);
+      div.append(prefab.rendered.sprite.sprite_sheet);
     }
     div.classList.add("prefab_box");
     div.addEventListener("mousedown", async () => {

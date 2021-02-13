@@ -1,7 +1,7 @@
 const path = require('path');
 const process = require("process");
 
-
+console.log("COMPILING");
 
 module.exports = (env)=> {
   return({
@@ -17,6 +17,11 @@ module.exports = (env)=> {
   },
   resolve: {
     extensions: [".ts", ".tsx", ".js"],
+    alias:{
+      "lib":path.resolve(__dirname,"src/lib"),
+      "game":path.resolve(__dirname,"src/game"),
+      "src":path.resolve(__dirname,"src")
+    }
   },
   node: {
     fs: 'empty'

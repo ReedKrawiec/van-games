@@ -5,18 +5,18 @@
     "target": "es2015",
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "module":"CommonJS"
+    "module":"CommonJS",
+    "baseUrl": ".",
+    "paths":{
+      "lib/*": ["./src/lib/*"],
+      "game/*" : ["./src/game/*"],
+      "src/*":["./src/*"]
+    },
   },
   "lib": [
     "es2015",
     "es6",
     "dom",
     "es2017"
-  ],
-  "exclude": [
-    "node_modules"
-  ],
-  "files":[
-    "src/game/main.ts"
   ]
 }

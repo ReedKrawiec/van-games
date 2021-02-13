@@ -2,11 +2,11 @@ export let object_template =
 `import {obj} from "lib/object";
 import { obj_state, Vector } from "lib/state";
 
-interface template_state extends obj_state{
+export interface template_state extends obj_state{
     
 }
     
-interface template_parameters{
+export interface template_parameters{
     
 }
     

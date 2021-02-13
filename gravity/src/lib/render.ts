@@ -1,7 +1,7 @@
 import { sprite } from "./sprite";
 import { GetViewportDimensions } from "../van";
 import { obj } from "./object";
-import { dimensions, obj_state } from "./state";
+import { dimensions, obj_state, Vector } from "./state";
 import { Text_Node, TextSetting,HUD,Text } from "./hud";
 import {positioned_sprite} from "./sprite"
 
@@ -143,6 +143,32 @@ export const text_renderer = (r:renderer_args,s:TextSetting) => {
   }
   r.context.restore();
 }
+export interface canvas_args{
+  canvas:HTMLCanvasElement,
+  width:number;
+  height:number,
+  x:number,
+  y:number,
+  scale:dimensions
+}
+export const canvas_renderer = (r:renderer_args,a:canvas_args) => {
+  let camera = r.camera;
+  let vheight = r.camera.state.dimensions.height / r.camera.state.scaling;
+  let final_x = ((a.x - camera.state.position.x + camera.state.dimensions.width * (1/r.camera.state.scaling) / 2 - a.width * a.scale.width / 2) * r.camera.state.scaling);
+  let final_y = ((vheight - a.y - camera.state.dimensions.height * (1/r.camera.state.scaling) / 2 - a.height * a.scale.height / 2 + camera.state.position.y) * r.camera.state.scaling);
+  let height = a.height * r.camera.state.scaling * a.scale.height;
+  let width = a.width * r.camera.state.scaling * a.scale.width;
+  r.context.save();
+  r.context.translate(final_x  + (width) / 2, final_y + height / 2);
+  r.context.drawImage(
+    a.canvas,
+    -(width ) / 2,
+    -height / 2,
+    width,
+    height
+  )
+  r.context.restore();
+}
 
 export const sprite_renderer = (r: renderer_args, s: sprite_args) => {
   let camera = r.camera;
@@ -153,7 +179,7 @@ export const sprite_renderer = (r: renderer_args, s: sprite_args) => {
   let width = s.sprite.sprite_width * r.camera.state.scaling * s.scale.width;
   r.context.save();
   r.context.globalAlpha = s.sprite.opacity;
-  r.context.translate(final_x  + (width) / 2, final_y + height / 2)
+  r.context.translate(final_x  + (width) / 2, final_y + height / 2);
   let radians = s.rotation * (Math.PI / 180);
   r.context.rotate(radians);
   if(s.scale_type == scale_type.grow){
@@ -204,10 +230,32 @@ export const sprite_renderer = (r: renderer_args, s: sprite_args) => {
   r.context.restore();
 }
 
+export interface line{
+  start:Vector,
+  end:Vector
+}
+
+export const line_renderer = (context:CanvasRenderingContext2D,line:line,color:string,lineWidth:number,camera:Camera) => {
+  let vheight = camera.state.dimensions.height / camera.state.scaling;
+  let start_x = ((line.start.x - camera.state.position.x + camera.state.dimensions.width * (1/camera.state.scaling) / 2) * camera.state.scaling);
+  let start_y = ((vheight - line.start.y + camera.state.position.y - camera.state.dimensions.height * (1/camera.state.scaling) / 2) * camera.state.scaling);
+
+  let end_x = ((line.end.x - camera.state.position.x + camera.state.dimensions.width * (1/camera.state.scaling) / 2) * camera.state.scaling);
+  let end_y = ((vheight - line.end.y + camera.state.position.y - camera.state.dimensions.height * (1/camera.state.scaling) / 2) * camera.state.scaling);
+  
+  
+  context.beginPath();
+  context.strokeStyle = color;
+  context.lineWidth = lineWidth * camera.state.scaling;
+  context.moveTo(start_x,start_y);
+  context.lineTo(end_x,end_y);
+  context.stroke(); 
+}
+
 export const stroked_rect_renderer = (context: CanvasRenderingContext2D, rect: rectangle, x: number, y: number, color: string, lineWidth:number, camera: Camera) => {
   let vheight = camera.state.dimensions.height / camera.state.scaling;
   let final_x = ((x - camera.state.position.x + camera.state.dimensions.width * (1/camera.state.scaling) / 2 - rect.width / 2) * camera.state.scaling);
-  let final_y = ((vheight - y - rect.height / 2 - camera.state.dimensions.height * (1/camera.state.scaling) / 2 + camera.state.position.y) * camera.state.scaling);
+  let final_y = ((vheight - y + camera.state.position.y - camera.state.dimensions.height * (1/camera.state.scaling) / 2 - rect.height / 2 ) * camera.state.scaling);
   let height = rect.height * camera.state.scaling;
   let width = rect.width * camera.state.scaling;
   context.strokeStyle = color;

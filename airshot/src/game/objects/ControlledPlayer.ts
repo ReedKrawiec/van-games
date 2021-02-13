@@ -6,7 +6,7 @@ import {obj_state} from "../../lib/state";
 export class ControlledPlayer extends Goomba {
   constructor(state:obj_state,params:Player_Params){
     super(state,params);
-    this.state.position = state.position;
+    
   }
   tags = ["player"];
   registerControls() {

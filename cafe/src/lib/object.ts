@@ -5,7 +5,7 @@ import { collision_box } from "./collision";
 import { Unbind, Bind, control_func, exec_type } from "./controls";
 import {audio} from "./audio";
 import {DEBUG, deep, game} from "../van";
-import { Distance } from "./math";
+import { Vec } from "./math";
 import {root_path,path} from "../lib/debug"; 
 
 interface obj_i<T> {
@@ -113,7 +113,7 @@ export interface bounding_box{
 export abstract class obj{
   //Url to the object's individual sprite, or all of its sprites
   //bundled into a spritesheet
-  sprite_url = "";
+  sprite_url = "./sprites/Error.png";
   //This is the loaded sprite/spritesheet of the object
   //which is fetched from the url above
   sprite_sheet: HTMLImageElement;
@@ -145,12 +145,14 @@ export abstract class obj{
   //Params are options for the object, that do not rely on state
   // For example, the side of a piece in chess.
   params:unknown = {};
+  static = false;
   layer:number = 1;
   save_to_file:boolean = true;
   tick_state = true;
   scale_type = scale_type.grow;
   static default_params:unknown = {};
-  opacity:number = 1;
+  proximity_boxes:Set<Vector> = new Set();
+  opacity:number;
   getState() {
     return this.state;
   }
@@ -165,18 +167,93 @@ export abstract class obj{
   defaultParams():unknown{
     return deep(this.defaultParams);
   }
+  recalculateProxBoxes(){
+    let bounds = this.getBoundingBox();
+          
+    let prox_map = this.game.getRoom().proximity_map;
+    let boxes = prox_map.getBoxLocations(this);
+    for (let cord of this.proximity_boxes) {
+      prox_map.remove(cord, this);
+    }
+    for (let cord of boxes) {
+      prox_map.add(cord, this);
+    }  
+  }
   constructor(state:obj_state,params = obj.default_params) {
-    
+
     this.id = "" + counter;
     this.binds = [];
     counter++;
     this.params = params;
     this.registerControls();
     this.registerAudio();
+    let position_proxy = (pos:Vector) => new Proxy(pos, {
+      "set": (target, prop, reciever: number) => {
+
+        if (prop == "y" || prop == "x") {
+          if (target[prop] == reciever) {
+            return true;
+          }
+          let room = this.game.getRoom();
+          let offset = 0
+          if (prop == "y") {
+            offset = this.getFullCollisionBox().height / 2;
+          }
+          else if (prop == "x") {
+            offset = this.getFullCollisionBox().width / 2;
+          }
+          if (reciever > 0) {
+            offset = -offset;
+          }
+          if (reciever > room.proximity_map.length / 2 + offset) {
+            reciever = room.proximity_map.length / 2 + offset;
+          }
+          if (reciever < -room.proximity_map.length / 2 + offset) {
+            reciever = -room.proximity_map.length / 2 + offset
+          }
+          target[prop] = reciever;
+          this.recalculateProxBoxes();
+        }
+        return true;
+      }
+    });
+    let scaling_proxy = (a:dimensions) => new Proxy(a,{
+      "set" : (target,prop,reciever:number) => {
+        if(prop == "width" || prop == "height"){
+          target[prop] = reciever;
+          this.recalculateProxBoxes();
+        }
+        return true;
+      }
+    });
     //Creates a copy of the passed in initial state to avoid 
     //Updating the saved state of the room
     this.state = JSON.parse(JSON.stringify(state));
-    
+    this.state = new Proxy(this.state,{
+      "set": (target, prop, reciever: unknown) => {
+        if (prop == "position") {
+          let res = reciever as Vector;
+          let vec = Vec.create(res.x,res.y);
+          target[prop] = position_proxy(vec);
+          if(this.game && this.game.getRoom()){
+            this.recalculateProxBoxes();
+          }
+        } else if(prop == "scaling"){
+          let res = reciever as dimensions;
+          let dim = {width:res.width,height:res.height};
+          target[prop] = scaling_proxy(dim);
+          if(this.game && this.game.getRoom()){
+            this.recalculateProxBoxes();
+          }
+        }
+        else{
+          (target as any)[prop] = reciever;
+        }
+        return true;
+      }
+    });
+    this.state.position = position_proxy(this.state.position); 
+    this.state.scaling = scaling_proxy(this.state.scaling);
     this.params = params;
   }
   load() {
@@ -218,7 +295,7 @@ export abstract class obj{
   }
   //Distance from one object to another.
   distance(target:obj):number{
-    return Distance(this.state.position,target.state.position);
+    return Vec.distance(this.state.position,target.state.position);
   }
   applyForce(vel:Vector){
     this.state.velocity.x += vel.x;
@@ -239,11 +316,13 @@ export abstract class obj{
 
   }
   statef(time:number){
-
   }
   delete() {
     for (let a of this.binds) {
       Unbind(a);
+    }
+    for (let cord of this.proximity_boxes){
+      this.game.getRoom().proximity_map.remove(cord,this);
     }
     this.game.getRoom().deleteItem(this.id);
   }
@@ -359,7 +438,7 @@ export abstract class obj{
     //If the object doesn't have registered animations, or isn't playing one
     //We have to create the sprite here.
     if (Object.keys(this.animations.animations).length == 0 || !this.animations.current) {
-      if(!this.sprite_sheet || !this.height || !this.width){
+      if(!this.sprite_sheet){
         return {
           sprite:undefined,
           x:this.state.position.x,
@@ -384,7 +463,7 @@ export abstract class obj{
           top: 0,
           sprite_width: sprite_width,
           sprite_height: sprite_height,
-          opacity:this.opacity
+          opacity:this.opacity || 1
         },
         x: this.state.position.x,
         y: this.state.position.y
@@ -410,27 +489,32 @@ export abstract class composite_obj extends obj{
   registered = false;
   collision = false;
   statics:composite_static[] = [];
-  constructor(pos:obj_state){
-    super(pos);
+  constructor(pos:obj_state,params:unknown){
+    super(pos,params);
   }
-  load(){
+  async load(){
+    await super.load();
     return new Promise<void>( async (resolve,reject)=>{
+      
       await Promise.all([...this.objects.map((a)=>a.load()),...this.statics.map(a=>a.obj.load())]);
       resolve();
     })
   }
   combinedObjects():obj[]{
     let combined = [...this.objects,...this.statics.map(a=>a.obj)];
-    combined.forEach(a=>a.parent = this);
     return [...combined,this];
   }
   getItemsByTag(tag:string){
     return this.combinedObjects().filter((a)=>a.tags.indexOf(tag) > -1);
   }
   addItem(a:obj,list=this.objects){
-    list.push(a);
     a.parent = this;
-    this.game.getRoom().addItem(a);
+    list.push(...a.combinedObjects());
+  }
+  addItems(a:obj[],list=this.objects){
+    for(let o of a){
+      this.addItem(o,list);
+    }
   }
   getAllCollisionBoxes():collision_box[]{
     let arr:collision_box[] = [];

@@ -1,4 +1,4 @@
-import { room, applyGravity,object_state_config, state_config } from "../../lib/room";
+import { room, applyGravity,object_state_config, state_config, map_matrix } from "../../lib/room";
 import { Goomba } from "../objects/Goomba";
 import { ControlledPlayer } from "../objects/ControlledPlayer";
 import { Gun } from "../objects/Gun";
@@ -15,6 +15,7 @@ import {bullet, Rocket} from "../objects/bullet";
 import {g} from "../main";
 import {Camera} from "../../lib/render";
 import * as json from "./Overworld.json";
+import { textChangeRangeIsUnchanged } from "typescript";
 interface overworld_i {
   player: gravity_obj,
   paused: boolean,
@@ -59,6 +60,7 @@ class Overworld_HUD extends HUD {
 export class Overworld extends room<overworld_i>{
   background_url = "./sprites/imD41l.jpg";
   objects:gravity_obj[];
+  proximity_map = new map_matrix(10000,2500)
   constructor(game:game<unknown>) {
     super(game,json as unknown as state_config);
     
@@ -100,59 +102,9 @@ export class Overworld extends room<overworld_i>{
         height:1
       })
     ]
-    /*
-
-    for(let a = 0;a<10;a++){
-      this.objects.push(new VertBox({
-        position:{x:320,y:250 + a * 500},
-        velocity:{x:0,y:0},
-        rotation:0,
-        scaling:{width:1,height:1}
-      },{}));
-      this.objects.push(new VertBox({
-        position:{x:900,y:250 + a * 500},
-        velocity:{x:0,y:0},
-        rotation:0,
-        scaling:{width:1,height:1}
-      },{}));
-      
-    }
-    for(let a = 0;a < 100; a++){
-      this.objects.push(new box({
-        position:{x:700 + a * 500,y:0},
-        velocity:{x:0,y:0},
-        rotation:0,
-        scaling:{width:1,height:1}
-      },{}));
-    }
-    
-    this.addItems(new Player({
-      position:{x:700,y:150},
-      velocity:{x:0,y:0},
-      rotation:0,
-      scaling:{width:1,height:1}},{id:"player"}).combinedObjects());
-    this.addItem(new Cursor({
-      position:{x:0,y:0},
-      velocity:{x:0,y:0},
-      rotation:0,
-      scaling:{width:1,height:1}},{id:"Cursor"}));
-    this.addItem(new Goomba({
-      position:{x:500,y:500},
-      velocity:{x:0,y:0},
-      rotation:0,
-      scaling:{width:1,height:1} 
-    }));
-    */
     game.state.cameras[0].hud = new Overworld_HUD();
   }
   registerControls() {
-    this.bindControl("Escape", exec_type.once, () => {
-      this.game.state.cameras[0].state.debug = !this.game.state.cameras[0].state.debug;
-      let player = this.getObj("player") as Goomba;
-      player.collision = !player.collision;
-      player.gravity = !player.gravity;
-    })
-    
     this.bindControl("mouse0down", exec_type.repeat,() => {
       let gun = this.getObjByTag("gun")[0] as Gun;
       if(gun){
@@ -190,7 +142,6 @@ export class Overworld extends room<overworld_i>{
     }
   }
   statef(time: number) {
-    
     if (!this.state.paused) {
       for (let a = 0; a < this.objects.length; a++) {
         applyGravity(this.objects[a], -1 * time/16, -15);

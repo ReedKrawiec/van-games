@@ -1,6 +1,6 @@
 
 
-import { room } from "../../lib/room";
+import { map_matrix, room } from "../../lib/room";
 import { game,viewport } from "../../van";
 import { state_config } from "../../lib/room";
 import {Camera} from "../../lib/render";
@@ -9,7 +9,7 @@ import * as config from "./simulation.json";
 import { exec_type, held_keys, Poll_Mouse } from "../../lib/controls";
 import { planet } from "../objects/planet";
 import {sun} from "../objects/sun";
-import { Distance } from "../../lib/math";
+import { Vec } from "../../lib/math";
 import {Vector} from "../../lib/state";
 import { HUD,Text } from "../../lib/hud";
 import { g } from "../main";
@@ -85,12 +85,13 @@ export class simulation extends room<simulation_state>{
   background_url="sprites/Error.png";
   grav_const = 6.67 * 10**-11;
   div_const = 1000000000;
+  proximity_map = new map_matrix(1000000,1000000);
   constructor(game: game<unknown>) {
     super(game, cfig);
     this.state = {
       bound_mass:undefined,
-      trail_interval:2,
-      trail_lifetime:3000,
+      trail_interval:5,
+      trail_lifetime:1500,
       trails_enabled:true
     }
     this.game.state.cameras.push(new Camera({
@@ -112,7 +113,7 @@ export class simulation extends room<simulation_state>{
     let closest_dist:Number = Number.MAX_SAFE_INTEGER;
     let suns = this.getObjByTag("sun") as sun[];
     for(let s of suns){
-      let d = Distance(s.state.position,pos)
+      let d = Vec.distance(s.state.position,pos)
       if(d < closest_dist){
         closest = s;
         closest_dist = d;

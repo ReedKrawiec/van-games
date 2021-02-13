@@ -31,14 +31,14 @@ export class Worker extends composite_obj{
   params:Worker_parameters;
   static default_params:Worker_parameters = {}
   constructor(state:obj_state,params:Worker_parameters = Worker.default_params){
-    super(state);
+    super(state,params);
     Object.assign(this.state,{
       current_task:undefined,
       task_counter:0,
       work_station:undefined
     });
-    this.objects.push(new Pather(state));
-    this.objects.push(new progress_bar(state,{
+    this.addItem(new Pather(state));
+    this.addItem(new progress_bar(state,{
       width:70,
       height:10,
       vert_offset:60

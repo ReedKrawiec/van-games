@@ -1,4 +1,4 @@
-import { room, applyGravity,object_state_config, state_config, map_matrix } from "../../lib/room";
+import { room, applyGravity,object_state_config, state_config, map_matrix, p2p } from "../../lib/room";
 import { Goomba } from "../objects/Goomba";
 import { ControlledPlayer } from "../objects/ControlledPlayer";
 import { Gun } from "../objects/Gun";
@@ -7,15 +7,16 @@ import { Cursor } from "../objects/Cursor";
 import { box } from "../objects/box";
 import { VertBox } from "../objects/VertBox";
 import { velocityCollisionCheck as velocityCollisionCheck } from "../../lib/collision";
-import { gravity_obj, rotation_length } from "../../lib/object";
+import { gravity_obj} from "../../lib/object";
+import {rotation_length} from "lib/math";
 import { Poll_Mouse, exec_type } from "../../lib/controls";
 import { HUD, Text } from "../../lib/hud";
-import { DEBUG, game, GetViewportDimensions, setDebug,viewport } from "../../van";
+import { DEBUG, game, GetViewportDimensions, peer_connection, peer_to_peer_game, setDebug,viewport } from "../../van";
 import {bullet, Rocket} from "../objects/bullet";
 import {g} from "../main";
 import {Camera} from "../../lib/render";
 import * as json from "./Overworld.json";
-import { textChangeRangeIsUnchanged } from "typescript";
+import {direction} from "game/objects/Goomba";
 interface overworld_i {
   player: gravity_obj,
   paused: boolean,
@@ -57,10 +58,12 @@ class Overworld_HUD extends HUD {
   }
 }
 
-export class Overworld extends room<overworld_i>{
+export class Overworld extends room<overworld_i> implements p2p{
   background_url = "./sprites/imD41l.jpg";
   objects:gravity_obj[];
   proximity_map = new map_matrix(10000,2500)
+  players:ControlledPlayer[] = [];
+  player_index:number = 0;
   constructor(game:game<unknown>) {
     super(game,json as unknown as state_config);
     
@@ -104,9 +107,73 @@ export class Overworld extends room<overworld_i>{
     ]
     game.state.cameras[0].hud = new Overworld_HUD();
   }
+  parse_packet(type:string,data:string){
+    let other_player = 0;
+    if(this.player_index == 0){
+      other_player = 1;
+    }
+    let target = this.players[other_player];
+    switch(type){
+      case "mouse_position":{
+        target.state.pointing_towards = JSON.parse(data);
+        break;
+      }
+      case "move":{
+        let velocity;
+        if(data == "left"){
+          if(target.state.velocity.x < -10){
+            velocity = 0;
+          }
+          else{
+            velocity = -1;
+          }
+        }
+        else{
+          if(target.state.velocity.x > 10){
+            velocity = 0;
+          }
+          else{
+            velocity = 1;
+          }
+        }
+        target.state.velocity.x += velocity;
+        break;
+      }
+      case "inital_move":{
+        if(data == "left"){
+          target.state.velocity.x -= 0.1;
+        }
+        else {
+          target.state.velocity.x += 0.1;
+        }
+        break;
+      }
+      case "jump":{
+        target.state.velocity.y += 25;
+        break;
+      }
+    }
+  }
+  initialize(){
+    let controlled_players = this.getObjByTag("player") as ControlledPlayer[];
+    this.players = controlled_players;
+    if((this.game as peer_to_peer_game<unknown>).type == peer_connection.child){
+      this.player_index = 1;
+    }
+  }
+  send_packet(type:string,data:string){
+    let g = this.game as peer_to_peer_game<unknown>;
+    if(g.type == peer_connection.child){
+      g.send_to_host(type,data);
+    } else {
+      g.send_to_all_peers(type,data);
+    }
+  }
   registerControls() {
+    /*
     this.bindControl("mouse0down", exec_type.repeat,() => {
       let gun = this.getObjByTag("gun")[0] as Gun;
+      //this.players[this.player_index].play("explosion", 0.4);
       if(gun){
         let muzzle = rotation_length(30,gun.state.rotation);
         let position = {
@@ -120,7 +187,7 @@ export class Overworld extends room<overworld_i>{
             velocity:{x:0,y:0},
             rotation:gun.state.rotation,
             scaling:{width:1,height:1}
-          },gun.state.rotation));
+          },{owner:this.players[this.player_index].id}));
         }
         
         if(this.state.locked_bullet == null)
@@ -128,6 +195,42 @@ export class Overworld extends room<overworld_i>{
         this.addItems(bullets);
       }
     },400)
+    */
+    this.bindControl("KeyA", exec_type.repeat, () => {
+      if (this.players[this.player_index].state.velocity.x > -10) {
+        
+        this.players[this.player_index].state.velocity.x = this.players[this.player_index].state.velocity.x - 1;
+        this.send_packet("move","left");
+      }
+    });
+    this.bindControl("KeyA", exec_type.once, () => {
+      this.players[this.player_index].state.direction = direction.left;
+      this.players[this.player_index].state.velocity.x = this.players[this.player_index].state.velocity.x - 0.1;
+      this.send_packet("initial_move","left");
+    });
+    this.bindControl("mouse0down", exec_type.repeat, () => {
+      
+    }, 400);
+    this.bindControl("KeyD", exec_type.repeat, () => {
+      if (this.players[this.player_index].state.velocity.x < 10) {
+        this.players[this.player_index].state.velocity.x = this.players[this.player_index].state.velocity.x + 1;
+        this.send_packet("move","right");
+      }
+    });
+    this.bindControl("KeyD", exec_type.once, () => {
+      this.players[this.player_index].state.direction = direction.right;
+      this.players[this.player_index].state.velocity.x = this.players[this.player_index].state.velocity.x + 0.1;
+      this.send_packet("initial_move","right");
+    });
+    /*
+    this.bindControl("Space", exec_type.once, () => {
+      if (!this.players[this.player_index].state.jumping) {
+        this.players[this.player_index].state.velocity.y += 25;
+        this.players[this.player_index].audio.play("slime", 0.1);
+        this.send_packet("jump","");
+      }
+    });
+    */
   }
   registerParticles(){
     this.particles["smoke"] = {
@@ -152,8 +255,8 @@ export class Overworld extends room<overworld_i>{
       let cameras = g.state.cameras;
       
       if (player) {        
-        cameras[0].state.position.x = player.state.position.x;
-        cameras[0].state.position.y = player.state.position.y + (cameras[0].state.dimensions.height/2 - player.height/2);     
+        cameras[0].state.position.x = this.players[this.player_index].state.position.x;
+        cameras[0].state.position.y = this.players[this.player_index].state.position.y + (cameras[0].state.dimensions.height/2 - this.players[this.player_index].height/2);     
       }
       
       if(target){
@@ -164,7 +267,12 @@ export class Overworld extends room<overworld_i>{
       if (cursor) {
         cursor.collision = false;
         cursor.gravity = false;
+        
         let mouse = Poll_Mouse(this.game.state.cameras[0]);
+        if(player){
+          this.players[this.player_index].state.pointing_towards = cursor.state.position;
+          this.send_packet("mouse_position",JSON.stringify(cursor.state.position));
+        }
         if(mouse){
           
           cursor.state.position.x = mouse.x;

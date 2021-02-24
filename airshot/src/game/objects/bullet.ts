@@ -1,9 +1,10 @@
 import {platformer_obj, plat_state} from "./abstract/platformer_obj";
 import {obj_state} from "../../lib/state";
 import { exec_type } from "../../lib/controls";
-import {rotation_length, obj} from "../../lib/object";
+import {obj} from "../../lib/object";
 import { Goomba } from "./Goomba";
 import {g} from "../main";
+import {rotation_length} from "lib/math";
 
 interface bullet_state extends obj_state{
   rotation:number,
@@ -18,7 +19,7 @@ interface position{
 }
 
 interface bullet_parameters{
-
+  owner:string;
 }
 
 export class bullet extends obj{
@@ -28,6 +29,8 @@ export class bullet extends obj{
   gravity = false;
   max_distance = 2000;
   tags = ["bullet"];
+  owner:number;
+  params:bullet_parameters;
   state:bullet_state;
   constructor(state:obj_state,params:bullet_parameters){
     super(state,params);
@@ -79,7 +82,7 @@ export class Rocket extends bullet{
      this.particle_timer = 0; 
     }
     let room = g.state.current_room;
-    let collisions = room.checkCollisions(this.getFullCollisionBox(),["gun","player"]);
+    let collisions = room.checkCollisions(this.getFullCollisionBox(),["gun"]).filter((o)=>o.id != this.params.owner);
     if(collisions.length > 0){
       for(let collision of collisions){
         let st = collision.state as unknown as plat_state;

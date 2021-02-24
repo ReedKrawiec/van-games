@@ -10,6 +10,7 @@ import {game} from "../van";
 import {debug_update_obj_list,root_path,path} from "../lib/debug";
 import {prefabs} from "../game/objects/prefabs";
 import {Vec,getRandInt} from "lib/math";
+import { Camera } from "./render";
 
 interface position{
   x:number,
@@ -53,6 +54,11 @@ interface internal_map{
     [index:number]:Map<string,obj>
   }
 }
+
+export interface p2p{
+  parse_packet(type:string,data:unknown,id:number):void
+}
+
 
 export class map_matrix{
   length:number;
@@ -166,28 +172,31 @@ export class room<T>{
   //on the hud layer.
   render:boolean = true;
   text_nodes:Text[] = [];
+  config:state_config;
   proximity_map:map_matrix = new map_matrix(10000,1000);
+  cameras:Camera[] = [];
   constructor(game:game<unknown>,config:state_config){
     this.game = game;
-    for(let c of config.objects){
-      //This handles loading objects from the saved json file associated with each room.
-      this.addItemStateConfig(c)
-    }
-   
+    this.config = config;
   }
+  
   exportStateConfig(){
     let config:state_config = {objects:[]};
-    for(let o of this.objects.filter((obj)=>obj.save_to_file)){
+    let filtered = this.objects.filter((obj)=>obj.save_to_file && !obj.parent)
+    for(let o of filtered){
       //If an object has a parent object, it's a descendent of a composite object
       //The parent will spawn this object when it's instantiated, so we do
       //not have to save this instance.
-        if(!o.parent){
         config.objects.push({
           type:o.constructor.name,
-          state:o.state,
+          state:{
+            position:Vec.scalar_add(o.state.position,0),
+            velocity:Vec.scalar_add(o.state.velocity,0),
+            rotation:o.state.rotation,
+            scaling:o.state.scaling
+          },
           parameters:o.params
         })
-      }
     }
     return config;
   }
@@ -214,13 +223,16 @@ export class room<T>{
       });
     })
   }
+  initialize(){
+
+  }
   //This is used while loading objects from file, it's used to dynamically load
   //objects from the room's json. If adding items within code, it's better to create
   //new instances of objects through addItem
   async addItemStateConfig(config:object_state_config){
     if(prefabs[config.type]){
       let new_obj = <obj>(new prefabs[config.type](Object.assign({},config.state),config.parameters));
-      this.addItems(new_obj.combinedObjects());
+      await this.addItems(new_obj.combinedObjects());
     }
     else{
       console.log("UNKNOWN TYPE ATTEMPTED TO LOAD: " + config.type)
@@ -228,7 +240,7 @@ export class room<T>{
   }
   //Adds the passed item to the room.
   async addItem(o:obj, list = this.objects){
-    this.addItems([o],list);
+    await this.addItems([...o.combinedObjects()],list);
   }
   //Adds every item in the passed array to the room.
   async addItems(o:obj[], list = this.objects){
@@ -245,6 +257,9 @@ export class room<T>{
       }
     }
     list.push(...o);
+    if(this.game.state.current_room && o.some((o)=>o.static)){
+      this.game.redrawStatics();
+    }
     if(DEBUG && list === this.objects){
       debug_update_obj_list();
     }
@@ -351,12 +366,11 @@ export class room<T>{
       velocityCollisionCheck(ticking_objects[a], this.objects);
       ticking_objects[a].statef(time);
     }
-    if(this.game.state.cameras){
-      for(let cameras of this.game.state.cameras){
-        if(cameras.hud){
-          cameras.hud.statef(time);
-        } 
-      } 
+    for(let cam of this.cameras){
+      if(cam.hud){
+        cam.hud.statef(time);
+      }
+      cam.statef(time);
     }
   }
   emitParticle(name:string,pos:position,lifetime:number,pos_range:number){
@@ -379,7 +393,7 @@ export class room<T>{
   }
   //Gets any objects that have the passed tag
   getObjByTag(tag:string):obj[]{
-    return this.objects.filter((a)=>a.tags.indexOf(tag) > -1);
+    return this.objects.filter((a)=>a.tags.includes(tag));
   }
   //renders the room's sprite
   renderf(time: number): sprite {
@@ -391,5 +405,11 @@ export class room<T>{
       sprite_width: this.background.width,
       opacity:1
     }
+  }
+}
+
+export class p2p_room extends room<unknown> implements p2p{
+  parse_packet(type:string,data:unknown,id:number){
+    
   }
 }

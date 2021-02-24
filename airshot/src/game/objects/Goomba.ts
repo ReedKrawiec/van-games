@@ -9,6 +9,7 @@ import {Text_Node,Text} from "../../lib/hud";
 import { Overworld } from "../rooms/Overworld";
 import { g } from "../main";
 import { scale_type } from "../../lib/render";
+import {Vec} from "lib/math";
 
 export enum direction {
   left,
@@ -19,7 +20,8 @@ export interface goomba_state extends obj_state, plat_state {
   direction: direction,
   jumping: boolean,
   times_airshot: number,
-  max_times_airshot: number
+  max_times_airshot: number,
+  pointing_towards:Vector
 }
 
 export interface gun_state extends obj_state {
@@ -54,7 +56,8 @@ export class Goomba extends platformer_obj{
       jumping: false,
       health: 100,
       times_airshot: 0,
-      max_times_airshot: 0
+      max_times_airshot: 0,
+      pointing_towards:Vec.create(0,0)
     })
     //this.animations.play("walk1");
   }
@@ -106,7 +109,6 @@ export class Goomba extends platformer_obj{
   }
   statef(time: number) {
     let room = g.getRoom();
-    let cursor = room.getObj("cursor");
     if (this.collision) {
       let col = this.getFullCollisionBox();
       if (room.checkCollisions({

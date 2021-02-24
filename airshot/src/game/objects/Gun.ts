@@ -1,9 +1,9 @@
 import {Vector, obj_state} from "../../lib/state";
-import { rotation_length } from "../../lib/object";
 import { platformer_obj } from "./abstract/platformer_obj";
 import { g } from "../main";
 import { Cursor } from "./Cursor";
 import { gun_state, Goomba } from "./Goomba";
+import {rotation_length} from "lib/math"
 
 
 export class Gun extends platformer_obj {
@@ -18,7 +18,7 @@ export class Gun extends platformer_obj {
   tags = ["gun"];
   statef(t: number) {
     if (this.player) {
-      let angle = this.player.angleTowards(this.cursor);
+      let angle = this.player.angleTowardsPoint(this.player.state.pointing_towards);
       let rot = rotation_length(50, angle);
       this.state.rotation = angle;
       this.state.position = {

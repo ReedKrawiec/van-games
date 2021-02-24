@@ -85,7 +85,7 @@ export class simulation extends room<simulation_state>{
   background_url="sprites/Error.png";
   grav_const = 6.67 * 10**-11;
   div_const = 1000000000;
-  proximity_map = new map_matrix(1000000,1000000);
+  proximity_map = new map_matrix(10000000000,10000000000);
   constructor(game: game<unknown>) {
     super(game, cfig);
     this.state = {

@@ -4,9 +4,10 @@ import { Particle, positioned_sprite, sprite, sprite_gen } from "./sprite";
 import { collision_box } from "./collision";
 import { Unbind, Bind, control_func, exec_type } from "./controls";
 import {audio} from "./audio";
-import {DEBUG, deep, game} from "../van";
-import { Vec } from "./math";
+import {DEBUG, copy, game} from "../van";
+import { Vec,rotation_length,angle_towards } from "./math";
 import {root_path,path} from "../lib/debug"; 
+import {Text} from "./hud";
 
 interface obj_i<T> {
   statef: state_func<T>,
@@ -22,16 +23,7 @@ export function getId(a: obj[], id: string): obj {
   return undefined;
 }
 
-//Finds the side lengths of a triangle if given the  angle (in degrees)
-//along with the length of the hypotenuse
-export function rotation_length(length: number, degree: number) {
-  let a_len = length * Math.sin(degree * Math.PI / 180);
-  let b_len = length * Math.cos(degree * Math.PI / 180);
-  return {
-    x: a_len,
-    y: b_len
-  }
-}
+
 
 //This counter tracks the global number of objects created so far
 //an object's id (if not overwritten) will be a unique integer, which
@@ -153,6 +145,7 @@ export abstract class obj{
   static default_params:unknown = {};
   proximity_boxes:Set<Vector> = new Set();
   opacity:number;
+  text_nodes:Text[] = [];
   getState() {
     return this.state;
   }
@@ -165,7 +158,13 @@ export abstract class obj{
 
   }
   defaultParams():unknown{
-    return deep(this.defaultParams);
+    return copy(this.defaultParams);
+  }
+  x_proxy(val:number){
+    return val;
+  }
+  y_proxy(val:number){
+    return val;
   }
   recalculateProxBoxes(){
     let bounds = this.getBoundingBox();
@@ -184,7 +183,7 @@ export abstract class obj{
     this.id = "" + counter;
     this.binds = [];
     counter++;
-    this.params = params;
+    this.params = Object.assign({},params);
     this.registerControls();
     this.registerAudio();
     let position_proxy = (pos:Vector) => new Proxy(pos, {
@@ -211,8 +210,11 @@ export abstract class obj{
           if (reciever < -room.proximity_map.length / 2 + offset) {
             reciever = -room.proximity_map.length / 2 + offset
           }
-          target[prop] = reciever;
+          target[prop] = this.x_proxy(reciever);
           this.recalculateProxBoxes();
+          if(this.static){
+            this.game.redrawStatics();
+          }
         }
         return true;
       }
@@ -222,6 +224,9 @@ export abstract class obj{
         if(prop == "width" || prop == "height"){
           target[prop] = reciever;
           this.recalculateProxBoxes();
+          if(this.static){
+            this.game.redrawStatics();
+          }
         }
         return true;
       }
@@ -237,6 +242,9 @@ export abstract class obj{
           target[prop] = position_proxy(vec);
           if(this.game && this.game.getRoom()){
             this.recalculateProxBoxes();
+            if(this.static){
+              this.game.redrawStatics();
+            }
           }
         } else if(prop == "scaling"){
           let res = reciever as dimensions;
@@ -244,6 +252,9 @@ export abstract class obj{
           target[prop] = scaling_proxy(dim);
           if(this.game && this.game.getRoom()){
             this.recalculateProxBoxes();
+            if(this.static){
+              this.game.redrawStatics();
+            }
           }
         }
         else{
@@ -255,6 +266,9 @@ export abstract class obj{
     this.state.position = position_proxy(this.state.position); 
     this.state.scaling = scaling_proxy(this.state.scaling);
     this.params = params;
+  }
+  getRoom(){
+    return this.game.getRoom();
   }
   load() {
     let _this = this;
@@ -316,6 +330,9 @@ export abstract class obj{
 
   }
   statef(time:number){
+    for(let node of this.text_nodes){
+      node.statef(time);
+    }
   }
   delete() {
     for (let a of this.binds) {
@@ -325,6 +342,9 @@ export abstract class obj{
       this.game.getRoom().proximity_map.remove(cord,this);
     }
     this.game.getRoom().deleteItem(this.id);
+    if(this.static){
+      this.game.redrawStatics();
+    }
   }
   UnbindAll(){
     for (let a of this.binds) {
@@ -494,11 +514,7 @@ export abstract class composite_obj extends obj{
   }
   async load(){
     await super.load();
-    return new Promise<void>( async (resolve,reject)=>{
-      
-      await Promise.all([...this.objects.map((a)=>a.load()),...this.statics.map(a=>a.obj.load())]);
-      resolve();
-    })
+    await Promise.all([...this.objects.map((a)=>a.load()),...this.statics.map(a=>a.obj.load())]);
   }
   combinedObjects():obj[]{
     let combined = [...this.objects,...this.statics.map(a=>a.obj)];

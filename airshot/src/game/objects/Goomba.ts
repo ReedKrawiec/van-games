@@ -28,10 +28,6 @@ export interface gun_state extends obj_state {
   rotation: number
 }
 
-export interface Player_Params{
-  id:string
-}
-
 interface goomba_params{
   id?:string
 }

@@ -326,8 +326,9 @@ export function debug_update_properties_element() {
       else if (typeof (<params>ele.params)[k] === "string") {
         input.setAttribute("type", "text");
       }
+
       input.setAttribute("id", k)
-      input.setAttribute("value", (<params>ele.params)[k] + "");
+      input.setAttribute("value", (JSON.stringify((<params>ele.params)[k])));
       input.addEventListener("click", (e) => {
         input.focus();
       })
@@ -344,7 +345,13 @@ export function debug_update_properties_element() {
           (<params>ele.params)[k] = false;
         }
         else {
-          (<params>ele.params)[k] = val;
+          try{
+            let parsed = JSON.parse(val);
+            (<params>ele.params)[k] = JSON.parse(val);
+          }
+          catch(e){
+            
+          }
         }
       })
       p.appendChild(span);

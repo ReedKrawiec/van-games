@@ -5,6 +5,9 @@ import {obj} from "../../lib/object";
 import { Goomba } from "./Goomba";
 import {g} from "../main";
 import {rotation_length} from "lib/math";
+import { PAUSED } from "src/van";
+import {ControlledPlayer} from "game/objects/ControlledPlayer";
+import { Player } from "./Player";
 
 interface bullet_state extends obj_state{
   rotation:number,
@@ -54,7 +57,7 @@ export class Rocket extends bullet{
   height = 67;
   width = 16;
   particle_timer = 0;
-  particle_frequency = 5;
+  particle_frequency = 32;
   max_distance = 5000;
   tags = ["Rocket"]
   hitbox = {
@@ -75,7 +78,7 @@ export class Rocket extends bullet{
     super.statef(time);
     if(this.particle_timer == 0){
       let offset = rotation_length(30,this.state.rotation + 180);
-      this.emitParticle("smoke",offset, 400, 16);
+      this.emitParticle("smoke",offset, 200, 16);
     }
     this.particle_timer += time;
     if(this.particle_timer > this.particle_frequency){
@@ -109,11 +112,14 @@ export class Rocket extends bullet{
         let multiplyer = 1 - distance/300;
         if(multiplyer < 0)
           multiplyer = 0;
-        
         let o_state = collider.state as obj_state;
-        let velocities = rotation_length(multiplyer * 100, this.angleTowards(collider));
+        let velocities = rotation_length(multiplyer * 80, this.angleTowards(collider));
         o_state.velocity.x += velocities.x * time/16;
         o_state.velocity.y += velocities.y * time/16;
+        if(collider.tags.includes("player") && collider.tags.includes("local") && collider.id != this.params.owner){
+          let o = collider.parent as Player;
+          o.state.health -= this.state.damage * multiplyer;
+        }
       }
       this.emitParticle("explosion",{x:0,y:0},500,0);
       this.audio.play("explosion",0.2);

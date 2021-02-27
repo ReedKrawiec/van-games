@@ -5,4 +5,5 @@ export class VertBox extends box {
   width = 64;
   height = 500;
   static = false;
+  tick_state = false;
 }

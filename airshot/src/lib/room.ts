@@ -55,6 +55,10 @@ interface internal_map{
   }
 }
 
+interface cache_entries{
+  [index:string]:any
+}
+
 export interface p2p{
   parse_packet(type:string,data:unknown,id:number):void
 }
@@ -175,6 +179,7 @@ export class room<T>{
   config:state_config;
   proximity_map:map_matrix = new map_matrix(10000,1000);
   cameras:Camera[] = [];
+  cache_entries:cache_entries = {};
   constructor(game:game<unknown>,config:state_config){
     this.game = game;
     this.config = config;
@@ -350,6 +355,12 @@ export class room<T>{
   }
   cleanup(){
 
+  }
+  cache(key:string,value?:any){
+    if(!this.cache_entries[key]){
+      this.cache_entries[key] = value;
+    }
+    return this.cache_entries[key];
   }
   //The room's state updating function.
   statef(time: number) {

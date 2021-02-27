@@ -102,6 +102,10 @@ export interface bounding_box{
   top_right:Vector
 }
 
+interface cache_entries{
+  [index:string]:any
+}
+
 export abstract class obj{
   //Url to the object's individual sprite, or all of its sprites
   //bundled into a spritesheet
@@ -146,6 +150,7 @@ export abstract class obj{
   proximity_boxes:Set<Vector> = new Set();
   opacity:number;
   text_nodes:Text[] = [];
+  cache_entries:cache_entries = {};
   getState() {
     return this.state;
   }
@@ -234,6 +239,15 @@ export abstract class obj{
     //Creates a copy of the passed in initial state to avoid 
     //Updating the saved state of the room
     this.state = JSON.parse(JSON.stringify(state));
+    if(!state.velocity){
+      this.state.velocity = Vec.create(0,0);
+    }
+    if(!state.scaling){
+      this.state.scaling = {height:1,width:1};
+    }
+    if(!state.rotation){
+      this.state.rotation = 0;
+    }
     this.state = new Proxy(this.state,{
       "set": (target, prop, reciever: unknown) => {
         if (prop == "position") {
@@ -381,6 +395,12 @@ export abstract class obj{
   //within the composite obect.
   getAllCollisionBoxes():collision_box[]{
     return [this.getFullCollisionBox()]
+  }
+  cache(key:string,value?:any,){
+    if(!this.cache_entries[key]){
+      this.cache_entries[key] = value;
+    }
+    return this.cache_entries[key];
   }
   //Checks to see if an object actually collides with the provided box.
   //A box represents an area within the game space

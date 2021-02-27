@@ -137,11 +137,11 @@ export class loading extends room<loading_state> implements p2p{
       if(this.state.input.length > 0)
         this.state.input = this.state.input.slice(0,this.state.input.length - 1);
     })
-    this.bindControl("Enter",exec_type.once,()=>{
+    this.bindControl("Enter",exec_type.once,async ()=>{
       let g = (this.game as peer_to_peer_game<{}>);
       if(this.state.hosting){
         console.log("loading");
-        g.loadRoomString("Overworld");
+        await g.loadRoomString("Overworld");
       }
       else{
         g.connect(this.state.input);

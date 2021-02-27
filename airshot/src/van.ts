@@ -87,7 +87,7 @@ interface game_state<T> {
   context: CanvasRenderingContext2D,
   current_room: room<unknown>,
   cameras: Array<Camera>,
-  canvas: HTMLCanvasElement,
+  canvases: HTMLCanvasElement[],
   globals: T
 }
 
@@ -110,7 +110,7 @@ export class game<T>{
   isRendering = false;
   constructor(ctx: CanvasRenderingContext2D, init_state: T) {
     this.state = {
-      canvas: canvas_element,
+      canvases: [canvas_element],
       logic: undefined,
       context: ctx,
       cameras: [
@@ -124,8 +124,10 @@ export class game<T>{
     this.static_context = this.static_canvas.getContext("2d");
     //DEBUG determines whether the game is running within the editor
     if (DEBUG) {
+
       //Sets up some global debug state and the editor keybindings
       debug_setup();
+      this.state.canvases.push(debug_state.target);
       //Initializes a separate logic loop solely for the editor
       //This separation allows for the editor to interact with the environment while
       //the actual room's state loop is paused.
@@ -317,6 +319,7 @@ export class game<T>{
           rect_renderer(this.offscreen_context, { width: 5, height: 5 }, coll.x, coll.y, "skyblue", 10, camera);
           stroked_rect_renderer(this.offscreen_context, coll, coll.x, coll.y, "blue", 1, camera);
         }
+
         stroked_rect_renderer(this.offscreen_context, { width: this.state.current_room.proximity_map.length, height: this.state.current_room.proximity_map.length }, 0, 0, "purple", 10, camera);
       }
       //Separate canvas for the editor camera
@@ -367,14 +370,16 @@ export class game<T>{
     //room list is a object that contains each room's class,
     //with the room's name as the key for class
     //This object is populated at compile time
-    this.state.cameras = [];
+    let loaded_room = false;
     for (let a of Object.keys(room_list)) {
       if (a == x) {
         //this isn't particularly type-safe.
         let new_room = <room<{}>>new room_list[a](this)
         await this.loadRoom(new_room);
+        return;
       }
     }
+    throw new Error("Attempted to load non-existing room.");
   }
   redrawStatics() {
     let room_length = this.state.current_room.proximity_map.length;
